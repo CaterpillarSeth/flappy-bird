@@ -248,7 +248,8 @@
         };
         let activePowerUp = null;
         let powerUpTimer = 0;
-        let powerUpSpawnChance = 0.25; // 25% chance per pipe
+        let powerUpSpawnChance = 0.35; // 35% chance to spawn between pipe sets
+        let pendingPowerUp = null; // Power-up waiting to be placed between pipes
 
         // Base game speed (for slow motion effect)
         let basePipeSpeed = 2.5;
@@ -291,6 +292,7 @@
             bird.h = baseBirdH;
             pipes = [];
             powerUps = [];
+            pendingPowerUp = null;
             score = 0;
             pipeTimer = 0;
             groundX = 0;
@@ -388,30 +390,49 @@
             // Ensure maxY is greater than minY to avoid negative range
             const safeMaxY = Math.max(maxY, minY + 50);
             const gapY = minY + Math.random() * (safeMaxY - minY);
+            
+            // Place pending power-up in the horizontal gap before this new pipe
+            if (pendingPowerUp && activePowerUp === null) {
+                placePowerUpBetweenPipes(pendingPowerUp, gapY);
+                pendingPowerUp = null;
+            }
+            
             pipes.push({
                 x: canvas.width,
                 gapY: gapY,
                 scored: false
             });
 
-            // Chance to spawn power-up with this pipe
-            if (Math.random() < powerUpSpawnChance && activePowerUp === null) {
-                spawnPowerUp(gapY);
+            // Chance to queue a power-up for the next pipe gap
+            // Don't queue if we already have one pending or if power-up is active
+            if (!pendingPowerUp && activePowerUp === null && Math.random() < powerUpSpawnChance) {
+                queuePowerUp();
             }
         }
 
-        function spawnPowerUp(gapY) {
+        function queuePowerUp() {
             const types = Object.keys(POWERUP_TYPES);
             const randomType = types[Math.floor(Math.random() * types.length)];
-            const powerUpType = POWERUP_TYPES[randomType];
+            pendingPowerUp = POWERUP_TYPES[randomType];
+        }
+
+        function placePowerUpBetweenPipes(powerUpType, nextPipeGapY) {
+            // Position in the horizontal gap between the previous pipe and this new pipe
+            // The gap is roughly pipeInterval * pipeSpeed pixels wide
+            const gapWidth = pipeInterval * pipeSpeed * 0.6; // Use 60% of the gap for variety
+            const gapStart = canvas.width - gapWidth;
             
-            // Position in the gap - either high or low
-            const gapCenter = gapY + pipeGap / 2;
-            const offset = (pipeGap / 2 - 25) * (Math.random() > 0.5 ? 0.7 : -0.7);
+            // Random X position within the horizontal gap
+            const powerUpX = gapStart + Math.random() * gapWidth * 0.8 + gapWidth * 0.1;
+            
+            // Random Y position - anywhere on screen but not too close to ground/ceiling
+            const minY = 60;
+            const maxY = canvas.height - groundH - 60;
+            const powerUpY = minY + Math.random() * (maxY - minY);
             
             powerUps.push({
-                x: canvas.width + pipeW / 2,
-                y: gapCenter + offset,
+                x: powerUpX,
+                y: powerUpY,
                 w: 24,
                 h: 24,
                 type: powerUpType,
