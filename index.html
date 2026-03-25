@@ -794,11 +794,12 @@
 
             pipes.forEach(p => {
                 p.x -= pipeSpeed;
+                const pw = pipeW;
 
                 // Collision (skip if ghost power-up active)
                 if (!activePowerUp || activePowerUp.type !== 'ghost') {
                     const bx = bird.x, by = bird.y, bw = bird.w, bh = bird.h;
-                    const px = p.x, pw = pipeW;
+                    const px = p.x;
                     const topH = p.gapY, bottomY = p.gapY + pipeGap;
 
                     if (bx + bw > px && bx < px + pw) {
