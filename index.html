@@ -149,6 +149,17 @@
         let pipeTimer = 0;
         let pipeInterval = 100;
 
+        // Power-ups
+        let powerUps = [];
+        const POWERUP_TYPES = {
+            GHOST: { type: 'ghost', color: '#9b59b6', icon: '👻', duration: 5000 },
+            SLOWMO: { type: 'slowmo', color: '#3498db', icon: '⏱️', duration: 5000 },
+            TINY: { type: 'tiny', color: '#2ecc71', icon: '🔽', duration: 5000 }
+        };
+        let activePowerUp = null;
+        let powerUpTimer = 0;
+        let powerUpSpawnChance = 0.25; // 25% chance per pipe
+
         // Ground
         let groundX = 0;
         let groundSpeed = 2;
@@ -164,15 +175,26 @@
             });
         }
 
+        // Base game speed (for slow motion effect)
+        let basePipeSpeed = 2.5;
+        let baseGravity = 0.5;
+
         function initGame() {
             bird.x = canvas.width * 0.25;
             bird.y = canvas.height * 0.5;
             bird.velocity = 0;
             bird.rotation = 0;
+            bird.w = 34;
+            bird.h = 24;
             pipes = [];
+            powerUps = [];
             score = 0;
             pipeTimer = 0;
             groundX = 0;
+            activePowerUp = null;
+            powerUpTimer = 0;
+            pipeSpeed = basePipeSpeed;
+            bird.gravity = baseGravity;
         }
 
         function startGame() {
@@ -230,6 +252,98 @@
                 gapY: gapY,
                 scored: false
             });
+
+            // Chance to spawn power-up with this pipe
+            if (Math.random() < powerUpSpawnChance && activePowerUp === null) {
+                spawnPowerUp(gapY);
+            }
+        }
+
+        function spawnPowerUp(gapY) {
+            const types = Object.keys(POWERUP_TYPES);
+            const randomType = types[Math.floor(Math.random() * types.length)];
+            const powerUpType = POWERUP_TYPES[randomType];
+            
+            // Position in the gap - either high or low
+            const gapCenter = gapY + pipeGap / 2;
+            const offset = (pipeGap / 2 - 25) * (Math.random() > 0.5 ? 0.7 : -0.7);
+            
+            powerUps.push({
+                x: canvas.width + pipeW / 2,
+                y: gapCenter + offset,
+                w: 24,
+                h: 24,
+                type: powerUpType,
+                collected: false
+            });
+        }
+
+        function collectPowerUp(powerUp) {
+            powerUp.collected = true;
+            activePowerUp = powerUp.type;
+            powerUpTimer = powerUp.type.duration;
+            
+            // Apply power-up effects
+            applyPowerUpEffect(powerUp.type);
+            
+            // Play sound effect (optional - using AudioContext for a simple beep)
+            playPowerUpSound();
+        }
+
+        function applyPowerUpEffect(type) {
+            switch(type.type) {
+                case 'slowmo':
+                    pipeSpeed = basePipeSpeed * 0.5;
+                    bird.gravity = baseGravity * 0.5;
+                    break;
+                case 'tiny':
+                    bird.w = 17;
+                    bird.h = 12;
+                    break;
+                case 'ghost':
+                    // Ghost effect handled in collision detection
+                    break;
+            }
+        }
+
+        function removePowerUpEffect() {
+            if (!activePowerUp) return;
+            
+            switch(activePowerUp.type) {
+                case 'slowmo':
+                    pipeSpeed = basePipeSpeed;
+                    bird.gravity = baseGravity;
+                    break;
+                case 'tiny':
+                    bird.w = 34;
+                    bird.h = 24;
+                    break;
+                case 'ghost':
+                    // Nothing to reset
+                    break;
+            }
+            activePowerUp = null;
+        }
+
+        function playPowerUpSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } catch(e) {
+                // Audio not supported, ignore
+            }
         }
 
         const groundH = 60;
@@ -241,6 +355,12 @@
             skyGrad.addColorStop(1, '#87ceeb');
             ctx.fillStyle = skyGrad;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Slow motion tint effect
+            if (activePowerUp && activePowerUp.type === 'slowmo') {
+                ctx.fillStyle = 'rgba(52, 152, 219, 0.15)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
 
             // Clouds
             ctx.fillStyle = 'rgba(255,255,255,0.8)';
@@ -280,6 +400,34 @@
                 ctx.fillRect(p.x, bottomY, 8, 18);
             });
 
+            // Power-ups
+            powerUps.forEach(p => {
+                if (p.collected) return;
+                
+                // Glow effect
+                ctx.shadowColor = p.type.color;
+                ctx.shadowBlur = 10;
+                
+                // Power-up background
+                ctx.fillStyle = p.type.color;
+                ctx.beginPath();
+                ctx.arc(p.x + p.w/2, p.y + p.h/2, p.w/2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Border
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Icon
+                ctx.shadowBlur = 0;
+                ctx.font = '14px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(p.type.icon, p.x + p.w/2, p.y + p.h/2);
+            });
+            ctx.shadowBlur = 0;
+
             // Ground
             ctx.fillStyle = '#ded895';
             ctx.fillRect(0, canvas.height - groundH, canvas.width, groundH);
@@ -296,6 +444,11 @@
             ctx.translate(bird.x + bird.w / 2, bird.y + bird.h / 2);
             ctx.rotate(bird.rotation);
             
+            // Ghost effect - semi-transparent
+            if (activePowerUp && activePowerUp.type === 'ghost') {
+                ctx.globalAlpha = 0.5;
+            }
+            
             // Body
             ctx.fillStyle = '#f7dc6f';
             ctx.beginPath();
@@ -305,25 +458,25 @@
             // Wing
             ctx.fillStyle = '#e4b95b';
             ctx.beginPath();
-            ctx.ellipse(-4, 4, 10, 6, -0.3, 0, Math.PI * 2);
+            ctx.ellipse(-4 * (bird.w/34), 4 * (bird.h/24), 10 * (bird.w/34), 6 * (bird.h/24), -0.3, 0, Math.PI * 2);
             ctx.fill();
             
             // Eye
             ctx.fillStyle = '#fff';
             ctx.beginPath();
-            ctx.arc(8, -4, 6, 0, Math.PI * 2);
+            ctx.arc(8 * (bird.w/34), -4 * (bird.h/24), 6 * (bird.w/34), 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#000';
             ctx.beginPath();
-            ctx.arc(9, -4, 3, 0, Math.PI * 2);
+            ctx.arc(9 * (bird.w/34), -4 * (bird.h/24), 3 * (bird.w/34), 0, Math.PI * 2);
             ctx.fill();
             
             // Beak
             ctx.fillStyle = '#e67e22';
             ctx.beginPath();
-            ctx.moveTo(14, 2);
-            ctx.lineTo(24, 4);
-            ctx.lineTo(14, 8);
+            ctx.moveTo(14 * (bird.w/34), 2 * (bird.h/24));
+            ctx.lineTo(24 * (bird.w/34), 4 * (bird.h/24));
+            ctx.lineTo(14 * (bird.w/34), 8 * (bird.h/24));
             ctx.closePath();
             ctx.fill();
             
@@ -339,17 +492,45 @@
                 ctx.strokeText(score, canvas.width / 2, 60);
                 ctx.fillText(score, canvas.width / 2, 60);
             }
+
+            // Active power-up indicator
+            if (activePowerUp && gameState === 'playing') {
+                const remainingTime = Math.ceil(powerUpTimer / 1000);
+                
+                // Background bar
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(canvas.width / 2 - 50, 70, 100, 30);
+                
+                // Progress bar
+                const progress = powerUpTimer / activePowerUp.duration;
+                ctx.fillStyle = activePowerUp.color;
+                ctx.fillRect(canvas.width / 2 - 48, 72, 96 * progress, 26);
+                
+                // Icon and timer
+                ctx.font = 'bold 16px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#fff';
+                ctx.fillText(`${activePowerUp.icon} ${remainingTime}s`, canvas.width / 2, 90);
+            }
         }
 
         function update() {
             if (gameState !== 'playing') return;
+
+            // Update power-up timer
+            if (activePowerUp) {
+                powerUpTimer -= 16; // ~60fps
+                if (powerUpTimer <= 0) {
+                    removePowerUpEffect();
+                }
+            }
 
             // Bird physics
             bird.velocity += bird.gravity;
             bird.y += bird.velocity;
             bird.rotation = Math.min(Math.max(bird.velocity * 0.05, -0.5), 1.2);
 
-            // Ground collision
+            // Ground collision (always kills, even with ghost)
             if (bird.y + bird.h > canvas.height - groundH) {
                 bird.y = canvas.height - groundH - bird.h;
                 bird.velocity = 0;
@@ -372,14 +553,16 @@
             pipes.forEach(p => {
                 p.x -= pipeSpeed;
 
-                // Collision
-                const bx = bird.x, by = bird.y, bw = bird.w, bh = bird.h;
-                const px = p.x, pw = pipeW;
-                const topH = p.gapY, bottomY = p.gapY + pipeGap;
+                // Collision (skip if ghost power-up active)
+                if (!activePowerUp || activePowerUp.type !== 'ghost') {
+                    const bx = bird.x, by = bird.y, bw = bird.w, bh = bird.h;
+                    const px = p.x, pw = pipeW;
+                    const topH = p.gapY, bottomY = p.gapY + pipeGap;
 
-                if (bx + bw > px && bx < px + pw) {
-                    if (by < topH || by + bh > bottomY) {
-                        gameOver();
+                    if (bx + bw > px && bx < px + pw) {
+                        if (by < topH || by + bh > bottomY) {
+                            gameOver();
+                        }
                     }
                 }
 
@@ -392,6 +575,25 @@
 
             // Remove off-screen pipes
             pipes = pipes.filter(p => p.x > -pipeW);
+
+            // Power-ups
+            powerUps.forEach(p => {
+                p.x -= pipeSpeed;
+
+                // Collision with bird
+                if (!p.collected) {
+                    const dx = (bird.x + bird.w/2) - (p.x + p.w/2);
+                    const dy = (bird.y + bird.h/2) - (p.y + p.h/2);
+                    const distance = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (distance < (bird.w/2 + p.w/2)) {
+                        collectPowerUp(p);
+                    }
+                }
+            });
+
+            // Remove off-screen or collected power-ups
+            powerUps = powerUps.filter(p => p.x > -p.w && !p.collected);
 
             // Ground scroll
             groundX -= groundSpeed;
