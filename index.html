@@ -378,9 +378,16 @@
         });
 
         function spawnPipe() {
+            // Ensure canvas has valid dimensions
+            if (!canvas.height || canvas.height < 200 || !canvas.width || canvas.width < 100) {
+                console.warn('Canvas dimensions invalid, skipping pipe spawn');
+                return;
+            }
             const minY = 80;
             const maxY = canvas.height - groundH - pipeGap - 80;
-            const gapY = minY + Math.random() * (maxY - minY);
+            // Ensure maxY is greater than minY to avoid negative range
+            const safeMaxY = Math.max(maxY, minY + 50);
+            const gapY = minY + Math.random() * (safeMaxY - minY);
             pipes.push({
                 x: canvas.width,
                 gapY: gapY,
